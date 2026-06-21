@@ -1,0 +1,17 @@
+{
+  "Author": "Nainaiowo",
+  "Name": "DMU P3 Blackhole Helper",
+  "InternalName": "DMUP3BlackholeHelper",
+  "DownloadCount": 11,
+  "Punchline": "Watch P3 Black Hole debuffs in DMU.",
+  "Description": "Tracks First, Second, and Third in Line, Accretion, and Earth Resistance Down in DMU.",
+  "RepoUrl": "https://github.com/Nainaiowo/dmu-p3-blackhole-helper",
+  "IconUrl": "https://raw.githubusercontent.com/Nainaiowo/dmu-p3-blackhole-helper/main/assets/icon.png",
+  "ApplicableVersion": "any",
+  "Tags": [
+    "dmu",
+    "blackhole",
+    "debuff",
+    "ultimate"
+  ]
+}
