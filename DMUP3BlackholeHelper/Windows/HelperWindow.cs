@@ -137,7 +137,7 @@ public sealed class HelperWindow : Window, IDisposable
     {
         selectedPreviewRoleIndex = Math.Clamp(roleIndex, 0, PreviewRoles.Count - 1);
         var assignment = CreatePreviewAssignment(PreviewRoles[selectedPreviewRoleIndex]);
-        var instructions = BlackHoleStrategy.GetInstructionsFor(assignment);
+        var instructions = BlackHoleStrategy.GetInstructionsFor(assignment, plugin.Configuration.SelectedStrategy);
         var activeInstruction = instructions[previewRandom.Next(instructions.Count)];
         var activeWave = BlackHoleTimeline.Waves.First(wave => wave.Set == activeInstruction.Set && wave.Wave == activeInstruction.Wave);
         var activeWaveIndex = Enumerable.Range(0, BlackHoleTimeline.Waves.Count)
@@ -274,7 +274,7 @@ public sealed class HelperWindow : Window, IDisposable
         }
     }
 
-    private static void DrawMechanicState(
+    private void DrawMechanicState(
         LocalPlayerBlackHoleAssignment? assignment,
         BlackHoleMechanicState mechanicState)
     {
@@ -312,9 +312,9 @@ public sealed class HelperWindow : Window, IDisposable
         }
     }
 
-    private static bool HasAssignmentForWave(LocalPlayerBlackHoleAssignment? assignment, BlackHoleWave wave)
+    private bool HasAssignmentForWave(LocalPlayerBlackHoleAssignment? assignment, BlackHoleWave wave)
     {
-        return BlackHoleStrategy.GetInstructionsFor(assignment)
+        return BlackHoleStrategy.GetInstructionsFor(assignment, plugin.Configuration.SelectedStrategy)
             .Any(instruction => instruction.IsForWave(wave));
     }
 
@@ -342,7 +342,7 @@ public sealed class HelperWindow : Window, IDisposable
 
     }
 
-    private static void DrawPersonalBlackHoleInstructions(
+    private void DrawPersonalBlackHoleInstructions(
         LocalPlayerBlackHoleAssignment? assignment,
         BlackHoleMechanicState mechanicState)
     {
@@ -353,7 +353,7 @@ public sealed class HelperWindow : Window, IDisposable
             return;
         }
 
-        var instructions = BlackHoleStrategy.GetInstructionsFor(assignment);
+        var instructions = BlackHoleStrategy.GetInstructionsFor(assignment, plugin.Configuration.SelectedStrategy);
         if (instructions.Count == 0)
         {
             ImGui.TextDisabled("No tether assignment matched.");

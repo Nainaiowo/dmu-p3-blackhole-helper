@@ -94,6 +94,8 @@ public sealed class ConfigWindow : Window, IDisposable
             plugin.SetPostInstructionsToChat(postInstructionsToChat);
         }
 
+        DrawStrategySetting();
+
         if (postInstructionsToChat)
         {
             DrawSoundEffectSetting();
@@ -135,6 +137,33 @@ public sealed class ConfigWindow : Window, IDisposable
         ImGui.TextColored(ActiveTextColor, "Green means the expected tether player was hit by the resolving blast.");
         ImGui.TextColored(ErrorTextColor, "Red means an expected tether player was not hit by a Black Hole blast.");
         ImGui.TextColored(UnassignedHitTextColor, "Blue means an unassigned player was hit by a Black Hole blast.");
+    }
+
+    private void DrawStrategySetting()
+    {
+        var selectedOption = BlackHoleStrategy.GetOption(configuration.SelectedStrategy);
+
+        ImGui.SetNextItemWidth(180.0f);
+        if (!ImGui.BeginCombo("Black Hole strat", selectedOption.Label))
+        {
+            return;
+        }
+
+        foreach (var option in BlackHoleStrategy.Options)
+        {
+            var isSelected = option.Kind == selectedOption.Kind;
+            if (ImGui.Selectable(option.Label, isSelected))
+            {
+                plugin.SetSelectedStrategy(option.Kind);
+            }
+
+            if (isSelected)
+            {
+                ImGui.SetItemDefaultFocus();
+            }
+        }
+
+        ImGui.EndCombo();
     }
 
     private void DrawSoundEffectSetting()
@@ -205,7 +234,7 @@ public sealed class ConfigWindow : Window, IDisposable
         DrawPullHistory(plugin.PullSnapshots);
     }
 
-    private static void DrawBuffSummaryExample()
+    private void DrawBuffSummaryExample()
     {
         if (!ImGui.CollapsingHeader("Example###BuffSummaryExample"))
         {
@@ -256,7 +285,8 @@ public sealed class ConfigWindow : Window, IDisposable
             new BlackHoleMechanicState(false, wave.MarkerAtSeconds + ReviewGraceSeconds, null, null, wave, 3),
             "Previous pull hit review",
             true,
-            "Example");
+            "Example",
+            configuration.SelectedStrategy);
         ImGui.Separator();
         DrawDeathTimeline(
             [
@@ -423,7 +453,8 @@ public sealed class ConfigWindow : Window, IDisposable
                 plugin.MechanicState,
                 "Current pull hit review",
                 false,
-                "Current");
+                "Current",
+                configuration.SelectedStrategy);
             ImGui.Separator();
             DrawDeathTimeline(plugin.CurrentPartyDeaths, "Current pull death timeline");
             return;
@@ -447,7 +478,8 @@ public sealed class ConfigWindow : Window, IDisposable
             plugin.MechanicState,
             "Current pull hit review",
             false,
-            "Current");
+            "Current",
+            configuration.SelectedStrategy);
         ImGui.Separator();
         DrawDeathTimeline(plugin.CurrentPartyDeaths, "Current pull death timeline");
         ImGui.Separator();
@@ -483,7 +515,7 @@ public sealed class ConfigWindow : Window, IDisposable
         ImGui.TextWrapped("This stays visible so the mechanic attempt can be reviewed.");
         DrawSnapshotAssignmentsWithChat(snapshot.Assignments, $"Pull {pullNumber}", $"Pull{pullNumber}");
         ImGui.Separator();
-        DrawBlackHoleResolutionReview(snapshot.Assignments, snapshot.Resolutions, snapshot.MechanicState, "Previous pull hit review", true, $"Pull{pullNumber}");
+        DrawBlackHoleResolutionReview(snapshot.Assignments, snapshot.Resolutions, snapshot.MechanicState, "Previous pull hit review", true, $"Pull{pullNumber}", configuration.SelectedStrategy);
         ImGui.Separator();
         DrawDeathTimeline(snapshot.Deaths, "Previous pull death timeline");
         ImGui.Separator();
@@ -720,7 +752,8 @@ public sealed class ConfigWindow : Window, IDisposable
         BlackHoleMechanicState mechanicState,
         string label,
         bool finalizeMissing,
-        string idSuffix)
+        string idSuffix,
+        BlackHoleStrategyKind strategy)
     {
         ImGui.TextUnformatted(label);
         ImGui.TextWrapped("Uses resolving Black Hole action effects and only records party members hit by the blast.");
@@ -728,7 +761,7 @@ public sealed class ConfigWindow : Window, IDisposable
         var hasAnyReview = false;
         foreach (var setNumber in BlackHoleTimeline.Waves.Select(wave => wave.Set).Distinct().OrderBy(setNumber => setNumber))
         {
-            if (DrawBlackHoleSetReview(assignments, resolutions, mechanicState, setNumber, finalizeMissing, idSuffix))
+            if (DrawBlackHoleSetReview(assignments, resolutions, mechanicState, setNumber, finalizeMissing, idSuffix, strategy))
             {
                 hasAnyReview = true;
             }
@@ -746,11 +779,12 @@ public sealed class ConfigWindow : Window, IDisposable
         BlackHoleMechanicState mechanicState,
         int setNumber,
         bool finalizeMissing,
-        string idSuffix)
+        string idSuffix,
+        BlackHoleStrategyKind strategy)
     {
         var waveReviews = BlackHoleTimeline.Waves
             .Where(wave => wave.Set == setNumber)
-            .Select(wave => BuildWaveReview(assignments, resolutions, mechanicState, wave, finalizeMissing))
+            .Select(wave => BuildWaveReview(assignments, resolutions, mechanicState, wave, finalizeMissing, strategy))
             .Where(review => review.ShouldReview)
             .ToList();
         if (waveReviews.Count == 0)
@@ -793,9 +827,10 @@ public sealed class ConfigWindow : Window, IDisposable
         IReadOnlyList<BlackHoleResolutionRecord> resolutions,
         BlackHoleMechanicState mechanicState,
         BlackHoleWave wave,
-        bool finalizeMissing)
+        bool finalizeMissing,
+        BlackHoleStrategyKind strategy)
     {
-        var expectedAssignments = GetExpectedAssignmentsForWave(assignments, wave);
+        var expectedAssignments = GetExpectedAssignmentsForWave(assignments, wave, strategy);
         if (expectedAssignments.Count == 0)
         {
             return BlackHoleWaveReview.Empty(wave);
@@ -805,7 +840,7 @@ public sealed class ConfigWindow : Window, IDisposable
             .Where(resolution => resolution.Wave.Set == wave.Set && resolution.Wave.Wave == wave.Wave)
             .OrderBy(resolution => resolution.SeenAtUtc)
             .ToList();
-        var resolutionGroups = BuildResolutionGroups(assignments, wave, waveResolutions);
+        var resolutionGroups = BuildResolutionGroups(assignments, wave, waveResolutions, strategy);
         var canShowMissing = finalizeMissing ||
             (mechanicState.IsActive && mechanicState.ElapsedSeconds >= wave.MarkerAtSeconds + ReviewGraceSeconds);
         var expectedHitKeys = resolutionGroups
@@ -845,7 +880,8 @@ public sealed class ConfigWindow : Window, IDisposable
     private static IReadOnlyList<BlackHoleResolutionGroup> BuildResolutionGroups(
         IReadOnlyList<LocalPlayerBlackHoleAssignment> assignments,
         BlackHoleWave wave,
-        IReadOnlyList<BlackHoleResolutionRecord> resolutions)
+        IReadOnlyList<BlackHoleResolutionRecord> resolutions,
+        BlackHoleStrategyKind strategy)
     {
         return resolutions
             .GroupBy(resolution => new
@@ -861,8 +897,8 @@ public sealed class ConfigWindow : Window, IDisposable
                     .OrderBy(resolution => resolution.SeenAtUtc)
                     .First();
                 var hits = MergeResolutionHits(group.SelectMany(resolution => resolution.Hits));
-                var tether = GetPrimaryTetherForResolution(assignments, wave, hits);
-                var expectedHits = GetExpectedHitsForTether(assignments, wave, hits, tether);
+                var tether = GetPrimaryTetherForResolution(assignments, wave, hits, strategy);
+                var expectedHits = GetExpectedHitsForTether(assignments, wave, hits, tether, strategy);
                 var expectedKeys = expectedHits.Select(hit => hit.MemberKey).ToHashSet(StringComparer.Ordinal);
                 var unexpectedHits = hits
                     .Where(hit => !expectedKeys.Contains(hit.MemberKey))
@@ -907,11 +943,12 @@ public sealed class ConfigWindow : Window, IDisposable
     private static int? GetPrimaryTetherForResolution(
         IReadOnlyList<LocalPlayerBlackHoleAssignment> assignments,
         BlackHoleWave wave,
-        IReadOnlyList<BlackHoleResolutionHit> hits)
+        IReadOnlyList<BlackHoleResolutionHit> hits,
+        BlackHoleStrategyKind strategy)
     {
         foreach (var hit in hits.OrderBy(hit => hit.HitOrder).ThenBy(hit => hit.PartyIndex))
         {
-            var tether = GetTetherForHit(assignments, wave, hit);
+            var tether = GetTetherForHit(assignments, wave, hit, strategy);
             if (tether is not null)
             {
                 return tether;
@@ -925,7 +962,8 @@ public sealed class ConfigWindow : Window, IDisposable
         IReadOnlyList<LocalPlayerBlackHoleAssignment> assignments,
         BlackHoleWave wave,
         IReadOnlyList<BlackHoleResolutionHit> hits,
-        int? tether)
+        int? tether,
+        BlackHoleStrategyKind strategy)
     {
         if (tether is null)
         {
@@ -933,7 +971,7 @@ public sealed class ConfigWindow : Window, IDisposable
         }
 
         return hits
-            .Where(hit => GetTetherForHit(assignments, wave, hit) == tether.Value)
+            .Where(hit => GetTetherForHit(assignments, wave, hit, strategy) == tether.Value)
             .OrderBy(hit => hit.PartyIndex)
             .ToList();
     }
@@ -941,7 +979,8 @@ public sealed class ConfigWindow : Window, IDisposable
     private static int? GetTetherForHit(
         IReadOnlyList<LocalPlayerBlackHoleAssignment> assignments,
         BlackHoleWave wave,
-        BlackHoleResolutionHit hit)
+        BlackHoleResolutionHit hit,
+        BlackHoleStrategyKind strategy)
     {
         var assignment = assignments.FirstOrDefault(assignment => assignment.MemberKey == hit.MemberKey);
         if (assignment is null)
@@ -950,7 +989,7 @@ public sealed class ConfigWindow : Window, IDisposable
         }
 
         return BlackHoleStrategy.Instructions
-            .Where(instruction => instruction.IsForWave(wave) && instruction.Role.Matches(assignment))
+            .Where(instruction => instruction.IsForWave(wave) && instruction.Role.Matches(assignment, strategy))
             .OrderBy(instruction => instruction.Tether)
             .Select(instruction => (int?)instruction.Tether)
             .FirstOrDefault();
@@ -987,14 +1026,15 @@ public sealed class ConfigWindow : Window, IDisposable
 
     private static IReadOnlyList<LocalPlayerBlackHoleAssignment> GetExpectedAssignmentsForWave(
         IReadOnlyList<LocalPlayerBlackHoleAssignment> assignments,
-        BlackHoleWave wave)
+        BlackHoleWave wave,
+        BlackHoleStrategyKind strategy)
     {
         var waveInstructions = BlackHoleStrategy.Instructions
             .Where(instruction => instruction.IsForWave(wave))
             .ToList();
 
         return assignments
-            .Where(assignment => waveInstructions.Any(instruction => instruction.Role.Matches(assignment)))
+            .Where(assignment => waveInstructions.Any(instruction => instruction.Role.Matches(assignment, strategy)))
             .OrderBy(assignment => assignment.PartyIndex)
             .ToList();
     }
@@ -1053,7 +1093,8 @@ public sealed class ConfigWindow : Window, IDisposable
 
     private void DrawBlackHoleStrategy()
     {
-        ImGui.TextUnformatted("Black Hole strategy");
+        var strategy = configuration.SelectedStrategy;
+        ImGui.TextUnformatted($"Black Hole strategy - {BlackHoleStrategy.GetOption(strategy).Label}");
         ImGui.TextWrapped("All tether assignments below are clockwise from Kefka.");
 
         if (!ImGui.BeginTable("##BlackHoleStrategyAllSets", 5, ImGuiTableFlags.SizingStretchProp | ImGuiTableFlags.RowBg))
@@ -1078,7 +1119,7 @@ public sealed class ConfigWindow : Window, IDisposable
             ImGui.TableNextColumn();
             ImGui.TextUnformatted(instruction.Tether.ToString());
             ImGui.TableNextColumn();
-            ImGui.TextUnformatted(instruction.Role.DisplayName);
+            ImGui.TextUnformatted(instruction.Role.GetDisplayName(strategy));
             ImGui.TableNextColumn();
             ImGui.TextWrapped(instruction.Action);
         }
@@ -1124,7 +1165,7 @@ public sealed class ConfigWindow : Window, IDisposable
             return;
         }
 
-        var instructions = BlackHoleStrategy.GetInstructionsFor(assignment);
+        var instructions = BlackHoleStrategy.GetInstructionsFor(assignment, configuration.SelectedStrategy);
         if (instructions.Count == 0)
         {
             ImGui.TextDisabled("No tether assignment matched your current role.");

@@ -5,6 +5,12 @@ namespace DMUP3BlackholeHelper;
 
 public static class BlackHoleStrategy
 {
+    public static readonly IReadOnlyList<BlackHoleStrategyOption> Options =
+    [
+        new(BlackHoleStrategyKind.Standard, "Standard"),
+        new(BlackHoleStrategyKind.Fae, "Fae"),
+    ];
+
     public static readonly IReadOnlyList<BlackHoleInstruction> Instructions =
     [
         new(1, 1, 1, Role(LineGroup.First, BlackHoleRoleKind.Dps), "Grab the first and only tether clockwise from Kefka."),
@@ -36,7 +42,9 @@ public static class BlackHoleStrategy
         new(4, 2, 1, Role(LineGroup.Third, BlackHoleRoleKind.Support), "Grab the only tether clockwise from Kefka."),
     ];
 
-    public static IReadOnlyList<BlackHoleInstruction> GetInstructionsFor(LocalPlayerBlackHoleAssignment? assignment)
+    public static IReadOnlyList<BlackHoleInstruction> GetInstructionsFor(
+        LocalPlayerBlackHoleAssignment? assignment,
+        BlackHoleStrategyKind strategy)
     {
         if (assignment is null || !assignment.HasLine)
         {
@@ -44,11 +52,21 @@ public static class BlackHoleStrategy
         }
 
         return Instructions
-            .Where(instruction => instruction.Role.Matches(assignment))
+            .Where(instruction => instruction.Role.Matches(assignment, strategy))
             .OrderBy(instruction => instruction.Set)
             .ThenBy(instruction => instruction.Wave)
             .ThenBy(instruction => instruction.Tether)
             .ToList();
+    }
+
+    public static BlackHoleStrategyOption GetOption(BlackHoleStrategyKind strategy)
+    {
+        return Options.FirstOrDefault(option => option.Kind == strategy) ?? Options[0];
+    }
+
+    public static BlackHoleStrategyKind Normalize(BlackHoleStrategyKind strategy)
+    {
+        return GetOption(strategy).Kind;
     }
 
     private static BlackHoleAssignmentRole Role(LineGroup lineGroup, BlackHoleRoleKind roleKind)
@@ -62,6 +80,14 @@ public static class BlackHoleStrategy
     }
 }
 
+public enum BlackHoleStrategyKind
+{
+    Standard,
+    Fae,
+}
+
+public sealed record BlackHoleStrategyOption(BlackHoleStrategyKind Kind, string Label);
+
 public enum BlackHoleRoleKind
 {
     Dps,
@@ -72,6 +98,17 @@ public enum BlackHoleRoleKind
 public sealed record BlackHoleAssignmentRole(LineGroup LineGroup, BlackHoleRoleKind RoleKind, bool RequiresAccretion)
 {
     public string DisplayName => $"{LineShortName} {RoleText}";
+
+    public string GetDisplayName(BlackHoleStrategyKind strategy)
+    {
+        var roleText = RoleKind switch
+        {
+            BlackHoleRoleKind.Dps when strategy == BlackHoleStrategyKind.Fae => "Support",
+            BlackHoleRoleKind.Support when strategy == BlackHoleStrategyKind.Fae => "DPS",
+            _ => RoleText,
+        };
+        return $"{LineShortName} {roleText}";
+    }
 
     public string LineShortName => LineGroup switch
     {
@@ -89,7 +126,7 @@ public sealed record BlackHoleAssignmentRole(LineGroup LineGroup, BlackHoleRoleK
         _ => "Unknown",
     };
 
-    public bool Matches(LocalPlayerBlackHoleAssignment assignment)
+    public bool Matches(LocalPlayerBlackHoleAssignment assignment, BlackHoleStrategyKind strategy)
     {
         if (!assignment.HasLine || assignment.LineGroup != LineGroup)
         {
@@ -106,10 +143,14 @@ public sealed record BlackHoleAssignmentRole(LineGroup LineGroup, BlackHoleRoleK
             return false;
         }
 
+        var isDps = strategy == BlackHoleStrategyKind.Fae
+            ? !assignment.IsDps
+            : assignment.IsDps;
+
         return RoleKind switch
         {
-            BlackHoleRoleKind.Dps => assignment.IsDps,
-            BlackHoleRoleKind.Support => !assignment.IsDps,
+            BlackHoleRoleKind.Dps => isDps,
+            BlackHoleRoleKind.Support => !isDps,
             _ => false,
         };
     }

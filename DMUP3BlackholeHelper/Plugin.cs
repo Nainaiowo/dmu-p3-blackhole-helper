@@ -283,6 +283,13 @@ public sealed class Plugin : IDalamudPlugin
         SaveConfiguration();
     }
 
+    public void SetSelectedStrategy(BlackHoleStrategyKind strategy)
+    {
+        Configuration.SelectedStrategy = BlackHoleStrategy.Normalize(strategy);
+        ResetInstructionChatCallouts();
+        SaveConfiguration();
+    }
+
     public void SetNowSoundEffectId(int soundEffectId)
     {
         Configuration.NowSoundEffectId = ClampSoundEffectId(soundEffectId);
@@ -880,7 +887,7 @@ public sealed class Plugin : IDalamudPlugin
         }
 
         return currentAssignments
-            .Where(assignment => waveInstructions.Any(instruction => instruction.Role.Matches(assignment)))
+            .Where(assignment => waveInstructions.Any(instruction => instruction.Role.Matches(assignment, Configuration.SelectedStrategy)))
             .OrderBy(assignment => assignment.PartyIndex)
             .ToList();
     }
@@ -1016,11 +1023,11 @@ public sealed class Plugin : IDalamudPlugin
         }
     }
 
-    private static IReadOnlyList<BlackHoleInstruction> GetInstructionsForWave(
+    private IReadOnlyList<BlackHoleInstruction> GetInstructionsForWave(
         LocalPlayerBlackHoleAssignment assignment,
         BlackHoleWave wave)
     {
-        return BlackHoleStrategy.GetInstructionsFor(assignment)
+        return BlackHoleStrategy.GetInstructionsFor(assignment, Configuration.SelectedStrategy)
             .Where(instruction => instruction.IsForWave(wave))
             .OrderBy(instruction => instruction.Tether)
             .ToList();

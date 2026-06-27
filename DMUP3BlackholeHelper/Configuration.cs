@@ -32,6 +32,8 @@ public sealed class Configuration : IPluginConfiguration
 
     public bool PostInstructionsToChat { get; set; }
 
+    public BlackHoleStrategyKind SelectedStrategy { get; set; } = BlackHoleStrategyKind.Standard;
+
     public int NowSoundEffectId { get; set; } = 1;
 
     public bool ShowPreviewWhenInactive { get; set; }
